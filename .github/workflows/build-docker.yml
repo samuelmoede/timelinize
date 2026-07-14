@@ -43,12 +43,36 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trigger Portainer redeploy webhook
+      # Portainer CE has no stack/container webhooks (Business Edition only), so
+      # redeploy through the authenticated REST API instead: fetch the stack's
+      # current compose file and env, then PUT it back with PullImage=true to
+      # force Portainer to pull the freshly-pushed :latest image and recreate
+      # the stack. See https://github.com/portainer/portainer-skills.
+      - name: Redeploy stack via Portainer API
         run: |
-          if [ -z "${PORTAINER_WEBHOOK_URL}" ]; then
-            echo "PORTAINER_WEBHOOK_URL secret is not set, skipping Portainer redeploy." >&2
+          set -euo pipefail
+          if [ -z "${PORTAINER_URL}" ] || [ -z "${PORTAINER_API_TOKEN}" ] || [ -z "${PORTAINER_STACK_ID}" ] || [ -z "${PORTAINER_ENDPOINT_ID}" ]; then
+            echo "PORTAINER_URL, PORTAINER_API_TOKEN, PORTAINER_STACK_ID and/or PORTAINER_ENDPOINT_ID secrets are not set, skipping Portainer redeploy." >&2
             exit 1
           fi
-          curl -fsSL -X POST "${PORTAINER_WEBHOOK_URL}"
+
+          FILE_CONTENT=$(curl -fsSL -H "X-API-Key: ${PORTAINER_API_TOKEN}" \
+            "${PORTAINER_URL}/api/stacks/${PORTAINER_STACK_ID}/file" | jq -r '.StackFileContent')
+
+          STACK_ENV=$(curl -fsSL -H "X-API-Key: ${PORTAINER_API_TOKEN}" \
+            "${PORTAINER_URL}/api/stacks/${PORTAINER_STACK_ID}?endpointId=${PORTAINER_ENDPOINT_ID}" | jq -c '.Env // []')
+
+          jq -n --arg content "$FILE_CONTENT" --argjson env "$STACK_ENV" \
+            '{StackFileContent: $content, Env: $env, PullImage: true, RepullImageAndRedeploy: true, Prune: false}' \
+            > /tmp/portainer-update.json
+
+          curl -fsSL -X PUT \
+            -H "X-API-Key: ${PORTAINER_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "${PORTAINER_URL}/api/stacks/${PORTAINER_STACK_ID}?endpointId=${PORTAINER_ENDPOINT_ID}" \
+            --data @/tmp/portainer-update.json
         env:
-          PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_TOKEN: ${{ secrets.PORTAINER_API_TOKEN }}
+          PORTAINER_STACK_ID: ${{ secrets.PORTAINER_STACK_ID }}
+          PORTAINER_ENDPOINT_ID: ${{ secrets.PORTAINER_ENDPOINT_ID }}
