@@ -123,19 +123,47 @@ type instaPersonalInformation struct {
 				Title             string `json:"title"`
 			} `json:"Profile Photo"`
 		} `json:"media_map_data"`
-		StringMapData struct {
-			Email          instaProfileData `json:"Email"`
-			PhoneNumber    instaProfileData `json:"Phone Number"`
-			PhoneConfirmed instaProfileData `json:"Phone Confirmed"`
-			Username       instaProfileData `json:"Username"`
-			Name           instaProfileData `json:"Name"`
-			Bio            instaProfileData `json:"Bio"`
-			Gender         instaProfileData `json:"Gender"`
-			DateOfBirth    instaProfileData `json:"Date of birth"`
-			Website        instaProfileData `json:"Website"`
-			PrivateAccount instaProfileData `json:"Private Account"`
-		} `json:"string_map_data"`
+		StringMapData profileStringMap `json:"string_map_data"`
 	} `json:"profile_user"`
+}
+
+// profileStringMap is a map rather than a fixed struct because Instagram
+// translates these key names based on the exporting account's UI language
+// (eg. "Username" becomes "Benutzername" for a German-language account), so
+// static json struct tags only match English-language exports and silently
+// leave every field empty for anyone else - including the owner's name and
+// identity, which then shows up as "(unknown)" throughout the timeline.
+type profileStringMap map[string]instaProfileData
+
+// profileFieldAliases holds localized key names Instagram is known to use
+// for profile fields, indexed by their canonical (English) name; get()
+// always tries the canonical name first. Extend this as more languages are
+// confirmed - "Telefonnummer" is inferred from the confirmed German phrase
+// "Telefonnummer bestätigt" ("Phone Confirmed") rather than observed
+// directly, since accounts without a stored phone number omit the key
+// entirely.
+var profileFieldAliases = map[string][]string{
+	"Email":           {"E-Mail-Adresse"},          // German
+	"Phone Number":    {"Telefonnummer"},           // German (inferred, see above)
+	"Phone Confirmed": {"Telefonnummer bestätigt"}, // German
+	"Username":        {"Benutzername"},            // German
+	"Gender":          {"Geschlecht"},              // German
+	"Date of birth":   {"Geburtsdatum"},            // German
+	"Private Account": {"Privates Konto"},          // German
+}
+
+// get returns the field for canonicalKey (its English name), falling back
+// to any known localized aliases if the export uses a different language.
+func (m profileStringMap) get(canonicalKey string) instaProfileData {
+	if v, ok := m[canonicalKey]; ok {
+		return v
+	}
+	for _, alias := range profileFieldAliases[canonicalKey] {
+		if v, ok := m[alias]; ok {
+			return v
+		}
+	}
+	return instaProfileData{}
 }
 
 type instaProfileData struct {
