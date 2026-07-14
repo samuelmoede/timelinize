@@ -77,34 +77,34 @@ func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, param
 	personalInfo := pi.ProfileUser[0].StringMapData
 
 	owner := timeline.Entity{
-		Name: personalInfo.Name.Value,
+		Name: personalInfo.get("Name").Value,
 		Attributes: []timeline.Attribute{
 			{
 				Name:     "instagram_username",
-				Value:    personalInfo.Username.Value,
+				Value:    personalInfo.get("Username").Value,
 				Identity: true,
 			},
 			{
 				Name:  timeline.AttributeGender,
-				Value: personalInfo.Gender.Value,
+				Value: personalInfo.get("Gender").Value,
 			},
 			{
 				Name:        timeline.AttributePhoneNumber,
-				Value:       personalInfo.PhoneNumber.Value,
+				Value:       personalInfo.get("Phone Number").Value,
 				Identifying: true,
 			},
 			{
 				Name:        timeline.AttributeEmail,
-				Value:       personalInfo.Email.Value,
+				Value:       personalInfo.get("Email").Value,
 				Identifying: true,
 			},
 			{
 				Name:  "instagram_bio",
-				Value: personalInfo.Bio.Value,
+				Value: personalInfo.get("Bio").Value,
 			},
 			{
 				Name:  "website",
-				Value: personalInfo.Website.Value,
+				Value: personalInfo.get("Website").Value,
 			},
 		},
 	}
@@ -113,8 +113,9 @@ func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, param
 			return dirEntry.FS.Open(picFilename)
 		}
 	}
-	if personalInfo.DateOfBirth.Value != "" && personalInfo.DateOfBirth.Value != "1919-01-01" { // for some weird reason their default is 1919??
-		bd, err := time.Parse("2006-01-02", personalInfo.DateOfBirth.Value)
+	dateOfBirth := personalInfo.get("Date of birth").Value
+	if dateOfBirth != "" && dateOfBirth != "1919-01-01" { // for some weird reason their default is 1919??
+		bd, err := time.Parse("2006-01-02", dateOfBirth)
 		if err == nil {
 			owner.Attributes = append(owner.Attributes, timeline.Attribute{
 				Name:  "birth_date",
