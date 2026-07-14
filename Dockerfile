@@ -30,10 +30,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends -t trixie-backp
 RUN rm -rf /var/lib/apt/lists/*
 
 # Build latest libvips from source with caching
+# wrap-mode=forcefallback forces meson to build glib (and its other deps) from
+# vendored subprojects instead of the apt-installed -dev packages above; that
+# path hits a meson bug (get_variable() on an overridden internal dependency
+# with no default_value, see mesonbuild/meson#11821) and fails the build. The
+# apt packages already satisfy every dependency via pkg-config, so drop the
+# flag and let meson use them.
 RUN --mount=type=cache,target=/tmp/libvips-cache \
     git clone --depth 1 https://github.com/libvips/libvips.git /tmp/libvips && \
     cd /tmp/libvips && \
-    meson setup build --buildtype=release --wrap-mode=forcefallback --backend=ninja -Dprefix=/usr -Dlibdir=/usr/lib && \
+    meson setup build --buildtype=release --backend=ninja -Dprefix=/usr -Dlibdir=/usr/lib && \
     ninja -C build && \
     ninja -C build install && \
     rm -rf /tmp/libvips && \
