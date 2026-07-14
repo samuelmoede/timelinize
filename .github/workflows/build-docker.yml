@@ -43,11 +43,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Portainer CE has no stack/container webhooks (Business Edition only), so
-      # redeploy through the authenticated REST API instead: fetch the stack's
-      # current compose file and env, then PUT it back with PullImage=true to
-      # force Portainer to pull the freshly-pushed :latest image and recreate
-      # the stack. See https://github.com/portainer/portainer-skills.
+  # Portainer sits on a private LAN IP (192.168.178.20) that GitHub-hosted
+  # cloud runners can't reach, and Portainer CE has no stack/container
+  # webhooks (Business Edition only) to trigger this from outside. So this
+  # job runs on a self-hosted runner living on the same LAN as Portainer
+  # (see .github/README-runner.md) and talks to the REST API directly:
+  # fetch the stack's current compose file and env, then PUT it back with
+  # PullImage=true to force a pull of the freshly-pushed :latest image and
+  # recreate the stack. See https://github.com/portainer/portainer-skills.
+  redeploy:
+    needs: build-and-push
+    runs-on: [self-hosted, synology]
+    steps:
       - name: Redeploy stack via Portainer API
         run: |
           set -euo pipefail
