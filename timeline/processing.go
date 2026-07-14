@@ -517,12 +517,31 @@ func (p *processor) shouldProcessExistingItem(it *Item, dbItem ItemRow, dataFile
 		dataFile = item && dataFile && it.fieldUpdatePolicies["data"] > 0
 	}()
 
-	// within the same import, reprocess an item if the data source gives us the item in pieces;
-	// for example, at first we might only get just enough of the item to satisfy a relationship
-	// (like an ID), then later as it iterates it finds that related item and fills out the rest
-	// of the item's information -- so if our current item row is missing information, we can at
-	// least safely add new info I think
-	if dbItem.JobID != nil && *dbItem.JobID == p.ij.job.id {
+	// Backfill fields on the existing item row that are still NULL, using whatever the incoming
+	// item has for them. This originally only ran "within the same import, [to] reprocess an item
+	// if the data source gives us the item in pieces; for example, at first we might only get just
+	// enough of the item to satisfy a relationship (like an ID), then later as it iterates it finds
+	// that related item and fills out the rest of the item's information" (hence the dbItem.JobID
+	// match against the current job).
+	//
+	// FIXME (2026-07-14, not yet upstreamed - see below): that same-job restriction also means a
+	// completely separate, later re-import can never repair a row that has a NULL owner
+	// (attribute_id) or other still-empty field, even if the data source would now resolve it
+	// correctly - eg. a data source bug caused an item's owner to come back completely empty on
+	// first import (see the Instagram localized-profile-fields fix in this same commit history),
+	// so no entity/attribute link was ever created (processEntity's IsEmpty() short-circuit), and
+	// re-importing after fixing the data source bug leaves attribute_id NULL forever, since this
+	// block never even runs for a new job. Backfilling a NULL field is safe regardless of which
+	// job originally created the row - it only ever fills gaps, never overwrites a real value - so
+	// checking dbItem.JobID != nil (an item created by some tracked import job, as opposed to a
+	// legacy/foreign row) should be sufficient; the specific job ID match isn't actually needed for
+	// safety, just for the original narrower "multi-pass within one job" use case.
+	//
+	// Deliberately NOT upstreamed as a PR yet (2026-07-14): this is a real bug affecting every data
+	// source, not just Instagram, but it changes behavior for every re-import job, so it deserves
+	// broader testing / its own upstream discussion rather than riding along with an unrelated
+	// data-source fix. Revisit and open a dedicated PR once that's been done.
+	if dbItem.JobID != nil {
 		if it.fieldUpdatePolicies == nil {
 			it.fieldUpdatePolicies = make(map[string]FieldUpdatePolicy)
 		}
